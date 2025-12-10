@@ -1,0 +1,83 @@
+#include "ns3/core-module.h"
+#include "ns3/network-module.h"
+#include "ns3/point-to-point-module.h"
+#include "ns3/ndnSIM-module.h"
+#include "ns3/ndnSIM/helper/ndn-global-routing-helper.hpp"
+
+namespace ns3 {
+
+int
+main(int argc, char* argv[])
+{
+  CommandLine cmd;
+  cmd.Parse(argc, argv);
+
+  // 1) Lire la topologie Abilene depuis le fichier
+  AnnotatedTopologyReader reader("", 1.0);
+  reader.SetFileName("abilene-topology.txt");   
+  reader.Read();
+
+  // 2) Récupérer les pointeurs vers les nœuds
+  Ptr<Node> prod  = Names::Find<Node>("producer");
+  Ptr<Node> c1    = Names::Find<Node>("consumer1");
+  Ptr<Node> c2    = Names::Find<Node>("consumer2");
+  Ptr<Node> c3    = Names::Find<Node>("consumer3");
+  Ptr<Node> c4    = Names::Find<Node>("consumer4");
+
+  // 3) Installer la pile NDN avec CS configuré
+  int csSize = 30;                    // changer a 30 -> 40 -> ... -> 90
+  ndn::StackHelper ndnHelper;
+  ndnHelper.setCsSize(csSize);
+  ndnHelper.setPolicy("nfd::cs::lru");
+  ndnHelper.InstallAll();
+
+  // 4) Routage global
+  ndn::GlobalRoutingHelper gr;
+  gr.InstallAll();
+
+  std::string prefix = "/GTI611";
+
+  // 5) Producteur
+  ndn::AppHelper prodHelper("ns3::ndn::Producer");
+  prodHelper.SetPrefix(prefix);
+  prodHelper.SetAttribute("PayloadSize", StringValue("1024"));
+  prodHelper.Install(prod);
+  gr.AddOrigins(prefix, prod);
+
+  // 6) Consommateurs CBR à 100 intérêts/s, décalés de 0.2 s
+  ndn::AppHelper consHelper("ns3::ndn::ConsumerCbr");
+  consHelper.SetPrefix(prefix);
+  consHelper.SetAttribute("Frequency", StringValue("100")); // 100 intérêts/s
+
+  consHelper.SetAttribute("StartTime", StringValue("0s"));
+  consHelper.Install(c1);
+
+  consHelper.SetAttribute("StartTime", StringValue("0.2s"));
+  consHelper.Install(c2);
+
+  consHelper.SetAttribute("StartTime", StringValue("0.4s"));
+  consHelper.Install(c3);
+
+  consHelper.SetAttribute("StartTime", StringValue("0.6s"));
+  consHelper.Install(c4);
+
+  // 7) Calcul des routes
+  gr.CalculateRoutes();
+
+  // 8) Tracer les délais applicatifs (pour la latence)
+  ndn::AppDelayTracer::InstallAll("app-delays-trace.txt");
+
+  Simulator::Stop(Seconds(20.0));
+  Simulator::Run();
+  Simulator::Destroy();
+
+  return 0;
+}
+
+} 
+
+int
+main(int argc, char* argv[])
+{
+  return ns3::main(argc, argv);
+}
